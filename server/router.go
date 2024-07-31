@@ -77,7 +77,7 @@ func (s *Server) defineRoutes(router *gin.Engine) {
 	// limitRate := limitRateForPasswordReset(store)
 
 	apirouter := router.Group("/api/v1")
-	// apirouter.POST("/auth/signup", s.handleSignup())
+	apirouter.POST("/auth/signup", s.handleSignup())
 	// apirouter.POST("/auth/login", s.handleLogin())
 
 	authorized := apirouter.Group("/")
