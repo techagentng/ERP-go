@@ -43,7 +43,7 @@ func Load() (*Config, error) {
 	}
 
 	c := &Config{}
-	err := envconfig.Process("citizenx", c)
+	err := envconfig.Process("erp", c)
 	if err != nil {
 		return nil, err
 	}
