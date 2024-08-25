@@ -7,7 +7,6 @@ import (
 	"time"
 
 	goval "github.com/go-passwd/validator"
-	"golang.org/x/crypto/bcrypt"
 
 	// "github.com/go-playground/locales/en"
 	ut "github.com/go-playground/universal-translator"
@@ -18,26 +17,22 @@ import (
 	// "golang.org/x/crypto/bcrypt"
 )
 
-// User represents a user of the application
+const (
+    AdminRole = "admin"
+    CIURole = "ciu"
+    CRURole = "cru"
+)
+
+// User struct representing a user in the system
 type User struct {
 	Model
-	Fullname       string         `json:"fullname" binding:"required,min=2"`
-	Username       string         `json:"username" binding:"required,min=2"`
-	Telephone      string         `json:"telephone" gorm:"unique;default:null" binding:"required"`
-	Email          string         `json:"email" gorm:"unique;not null" binding:"required,email"`
-	Password       string         `json:"password,omitempty" gorm:"-"`
-	HashedPassword string         `json:"-"`
+    ID        uint           `gorm:"primaryKey"`
+    Name      string         `gorm:"size:255"`
+    Email     string         `gorm:"unique;not null"`
+    Password       string         `json:"password,omitempty" gorm:"-"`
+    Role      Role           `gorm:"type:varchar(20)"`
 	IsEmailActive  bool           `json:"-"`
-	IsSocial       bool           `json:"-"`
-	AccessToken    string         `json:"-"`
-	IsVerified     bool           `json:"is_verified"`
-	IsAnonymous    bool           `json:"is_anonymous"`
-	IsJournalist   bool           `json:"is_journalist"`
-	AdminStatus    bool           `json:"is_admin" gorm:"foreignKey:Status"` 
-	ThumbNailURL   string         `json:"thumbnailurl"`
-	MacAddress     string         `json:"mac_address"`
-	LGAName        string         `gorm:"foreignKey:Name"`
-	Online         bool           `json:"online"`
+	HashedPassword string         `json:"-"`
 }
 
 type Admin struct {
@@ -53,18 +48,6 @@ type CreateSocialUserParams struct {
 	Name     string `json:"name"`
 }
 
-//	func ValidateStruct(req interface{}) []error {
-//		validate := validator.New()
-//		// english := en.New()
-//		// uni := ut.New(english, english)
-//		// trans, _ := uni.GetTranslator("en")
-//		// _ = enTranslations.RegisterTranslationsFunc(validattrans)
-//		err := validateWhiteSpaces(req)
-//		errs := translateError(err, trans)
-//		err = validate.Struct(req)
-//		errs = translateError(err, trans)
-//		return errs
-//	}
 func ValidatePassword(password string) error {
 	passwordValidator := goval.New(goval.MinLength(6, errors.New("password cant be less than 6 characters")),
 		goval.MaxLength(15, errors.New("password cant be more than 15 characters")))
@@ -157,10 +140,4 @@ type LoginResponse struct {
 //	func (u *User) VerifyPassword(password string) error {
 //		return bcrypt.CompareHashAndPassword([]byte(u.HashedPassword), []byte(password))
 //	}
-func (u *User) VerifyPassword(password string) error {
-	err := bcrypt.CompareHashAndPassword([]byte(u.HashedPassword), []byte(password))
-	if err != nil {
-		return err // Passwords do not match
-	}
-	return nil // Passwords match
-}
+

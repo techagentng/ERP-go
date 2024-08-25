@@ -52,7 +52,7 @@ func migrate(db *gorm.DB) error {
 	// AutoMigrate all the models
 	err := db.AutoMigrate(
 		&models.User{},
-		&models.Trailer{},
+		&models.Trailers{},
 	)
 	if err != nil {
 		return fmt.Errorf("migrations error: %v", err)

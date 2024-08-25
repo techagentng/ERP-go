@@ -111,7 +111,7 @@ func (s *Server) handleUpdateUserImageUrl() gin.HandlerFunc {
         filename := userIDString + "_" + fileHeader.Filename
 
         // Upload file to S3
-        filepath, err := uploadFileToS3(s3Client, file, "your-s3-bucket-name", filename)
+        _, err = uploadFileToS3(s3Client, file, "your-s3-bucket-name", filename)
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to upload file to S3"})
             return
@@ -124,8 +124,6 @@ func (s *Server) handleUpdateUserImageUrl() gin.HandlerFunc {
             return
         }
 
-        // Create new image record for the user
-        user.ThumbNailURL = filepath
         if err := s.AuthRepository.CreateUserImage(user); err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user profile"})
             return
@@ -186,12 +184,9 @@ func (s *Server) handleSignup() gin.HandlerFunc {
 
         // Decode the other form data into the user struct
         var user models.User
-        user.Fullname = c.PostForm("fullname")
-        user.Username = c.PostForm("username")
-        user.Telephone = c.PostForm("telephone")
+    
         user.Email = c.PostForm("email")
         user.Password = c.PostForm("password")
-        user.ThumbNailURL = filePath // Set the file path in the user struct
 
         // Validate the user data using the validator package
         validate := validator.New()
@@ -255,56 +250,56 @@ func (s *Server) HandleGoogleLogin() gin.HandlerFunc {
 	}
 }
 
-func (s *Server) HandleGoogleCallback() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		state := c.Query("state")
-		code := c.Query("code")
-		err := validateState(state, s.Config.JWTSecret)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "invalid login",
-			})
-			return
-		}
+// func (s *Server) HandleGoogleCallback() gin.HandlerFunc {
+// 	return func(c *gin.Context) {
+// 		state := c.Query("state")
+// 		code := c.Query("code")
+// 		err := validateState(state, s.Config.JWTSecret)
+// 		if err != nil {
+// 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+// 				"error": "invalid login",
+// 			})
+// 			return
+// 		}
 
-		oauth2Config := &oauth2.Config{
-			ClientID:     s.Config.GoogleClientID,
-			ClientSecret: s.Config.GoogleClientSecret,
-			RedirectURL:  s.Config.GoogleRedirectURL,
-			Endpoint:     google.Endpoint,
-			Scopes: []string{
-				"https://www.googleapis.com/auth/userinfo.email",
-				"https://www.googleapis.com/auth/userinfo.profile",
-			},
-		}
+// 		oauth2Config := &oauth2.Config{
+// 			ClientID:     s.Config.GoogleClientID,
+// 			ClientSecret: s.Config.GoogleClientSecret,
+// 			RedirectURL:  s.Config.GoogleRedirectURL,
+// 			Endpoint:     google.Endpoint,
+// 			Scopes: []string{
+// 				"https://www.googleapis.com/auth/userinfo.email",
+// 				"https://www.googleapis.com/auth/userinfo.profile",
+// 			},
+// 		}
 
-		token, err := oauth2Config.Exchange(context.Background(), code)
+// 		token, err := oauth2Config.Exchange(context.Background(), code)
 
-		if err != nil || token == nil {
-			fmt.Println("Token exchange error:", err.Error())
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "invalid token",
-			})
-			return
-		}
+// 		if err != nil || token == nil {
+// 			fmt.Println("Token exchange error:", err.Error())
+// 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+// 				"error": "invalid token",
+// 			})
+// 			return
+// 		}
 
-		authPayload, errr := s.googleSignInUser(c, token.AccessToken)
-		log.Println("Google code:", authPayload)
-		if errr != nil {
-			log.Println("printed", errr)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "invalid authTokenxxx",
-			})
-			return
-		}
-		c.Header("Access-Control-Allow-Origin", "https://citizenx-dashboard-sbqx.onrender.com")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
-		c.Header("Access-Control-Allow-Headers", "Origin, Authorization, Content-Type")
-		c.Header("Access-Control-Allow-Credentials", "true")
-		log.Println("authpay data", authPayload.Data)
-		response.JSON(c, "google sign in successful", http.StatusOK, authPayload, err)
-	}
-}
+// 		authPayload, errr := s.googleSignInUser(c, token.AccessToken)
+// 		log.Println("Google code:", authPayload)
+// 		if errr != nil {
+// 			log.Println("printed", errr)
+// 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+// 				"error": "invalid authTokenxxx",
+// 			})
+// 			return
+// 		}
+// 		c.Header("Access-Control-Allow-Origin", "https://citizenx-dashboard-sbqx.onrender.com")
+// 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
+// 		c.Header("Access-Control-Allow-Headers", "Origin, Authorization, Content-Type")
+// 		c.Header("Access-Control-Allow-Credentials", "true")
+// 		log.Println("authpay data", authPayload.Data)
+// 		response.JSON(c, "google sign in successful", http.StatusOK, authPayload, err)
+// 	}
+// }
 
 // generateJWTToken generates a jwt token to manage the state between calls to google
 func generateJWTToken(secret string) (string, error) {
@@ -395,21 +390,21 @@ func AddRefreshTokenSessionEntry(c context.Context, duration time.Duration) func
 	}
 }
 
-func (s *Server) googleSignInUser(c *gin.Context, token string) (*AuthPayload, error) {
-	googleUserDetails, err := s.getUserInfoFromGoogle(token)
-	if err != nil {
-		return nil, fmt.Errorf("unable to get user details from google: %v", err)
-	}
+// func (s *Server) googleSignInUser(c *gin.Context, token string) (*AuthPayload, error) {
+// 	googleUserDetails, err := s.getUserInfoFromGoogle(token)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("unable to get user details from google: %v", err)
+// 	}
 
-	authPayload, err := s.GetGoogleSignInToken(c, googleUserDetails)
-	if err != nil {
-		return nil, fmt.Errorf("unable to sign in user: %v", err)
-	}
-	fmt.Println("Google user details:", googleUserDetails)
-	// Log authentication payload for debugging
+// 	authPayload, err := s.GetGoogleSignInToken(c, googleUserDetails)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("unable to sign in user: %v", err)
+// 	}
+// 	fmt.Println("Google user details:", googleUserDetails)
+// 	// Log authentication payload for debugging
 
-	return authPayload, nil
-}
+// 	return authPayload, nil
+// }
 
 // getUserInfoFromGoogle will return information of user which is fetched from Google
 func (srv *Server) getUserInfoFromGoogle(token string) (*GoogleUser, error) {
@@ -438,78 +433,6 @@ func (srv *Server) getUserInfoFromGoogle(token string) (*GoogleUser, error) {
 	}
 
 	return &googleUserDetails, nil
-}
-
-// GetGoogleSignInToken returns the signin access token and refresh token pair to the social user
-func (s *Server) GetGoogleSignInToken(c *gin.Context, googleUserDetails *GoogleUser) (*AuthPayload, error) {
-    log.Println("Starting Google sign-in process")
-
-    if googleUserDetails == nil {
-        log.Println("Google user details are nil")
-        return nil, fmt.Errorf("error: google user details can't be empty")
-    }
-    if googleUserDetails.Email == "" {
-        log.Println("Google user email is empty")
-        return nil, fmt.Errorf("error: email can't be empty")
-    }
-    if googleUserDetails.Name == "" {
-        log.Println("Google user name is empty")
-        return nil, fmt.Errorf("error: name can't be empty")
-    }
-
-    log.Printf("Looking for existing user with email: %s", googleUserDetails.Email)
-    user, err := s.AuthRepository.FindUserByEmail(googleUserDetails.Email)
-    if err != nil {
-        if err.Error() == "user not found" {
-            log.Printf("No existing user found with email: %s. Proceeding to sign-up.", googleUserDetails.Email)
-            user, err = s.signUpAndCreateUser(c, googleUserDetails)
-            if err != nil {
-                log.Printf("Error during sign-up for email %s: %v", googleUserDetails.Email, err)
-                return nil, fmt.Errorf("error signing up user: %v", err)
-            }
-        } else {
-            log.Printf("Error occurred while checking if email exists: %v", err)
-            return nil, fmt.Errorf("error checking if email exists: %v", err)
-        }
-    } else {
-        log.Printf("Existing user found: %+v", user)
-    }
-
-    log.Printf("Generating token pair for user: %s", googleUserDetails.Email)
-    accessToken, refreshToken, err := jwtPackage.GenerateTokenPair(user.Email, s.Config.JWTSecret, user.AdminStatus, user.ID)
-    if err != nil {
-        log.Printf("Error generating token pair for email %s: %v", googleUserDetails.Email, err)
-        return nil, fmt.Errorf("error generating token pair: %v", err)
-    }
-
-    payload := &AuthPayload{
-        AccessToken:  accessToken,
-        RefreshToken: refreshToken,
-        TokenType:    "Bearer",
-        ExpiresIn:    int(AccessTokenDuration.Seconds()),
-    }
-    log.Printf("Auth payload generated for user %s: %+v", googleUserDetails.Email, payload)
-    return payload, nil
-}
-
-func (s *Server) signUpAndCreateUser(c *gin.Context, googleUserDetails *GoogleUser) (*models.User, error) {
-	log.Printf("Attempting to sign up user with email: %s", googleUserDetails.Email)
-
-	newUser := &models.User{
-		Email:    googleUserDetails.Email,
-		IsSocial: true,
-		Fullname: googleUserDetails.Name,
-		// Add other fields as necessary
-	}
-
-	createdUser, err := s.AuthRepository.CreateUser(newUser)
-	if err != nil {
-		log.Printf("Error creating user for email %s: %v", googleUserDetails.Email, err)
-		return nil, fmt.Errorf("error creating user: %v", err)
-	}
-
-	log.Printf("User created successfully: %+v", createdUser)
-	return createdUser, nil
 }
 
 func (s *Server) SocialAuthenticate(authRequest *AuthRequest, authPayloadOption func(*AuthPayload), c *gin.Context) (*AuthPayload, error) {
@@ -716,11 +639,6 @@ func (s *Server) handleShowProfile() gin.HandlerFunc {
 			return
 		}
 
-		// If user's thumbnail URL is empty, set it to the default thumbnail URL
-		if user.ThumbNailURL == "" {
-			user.ThumbNailURL = "default_thumbnail_url"
-		}
-
 		user, err = s.AuthService.GetUserProfile(userIDStr)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user profile"})
@@ -729,9 +647,7 @@ func (s *Server) handleShowProfile() gin.HandlerFunc {
 
 		// Prepare response data
 		responseData := gin.H{
-			"name":         user.Fullname,
 			"email":        user.Email,
-			"profileImage": user.ThumbNailURL,
 		}
 
 		// Return the response

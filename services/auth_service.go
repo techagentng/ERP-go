@@ -75,13 +75,6 @@ func (s *authService) SignupUser(user *models.User) (*models.User, error) {
 		return nil, apiError.GetUniqueContraintError(err)
 	}
 
-	// Check if the phone number already exists
-	err = s.authRepo.IsPhoneExist(user.Telephone)
-	if err != nil {
-		log.Printf("SignupUser error: %v", err)
-		return nil, apiError.GetUniqueContraintError(err)
-	}
-
 	// Hash the password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -126,15 +119,8 @@ func (a *authService) LoginUser(loginRequest *models.LoginRequest) (*models.Logi
 		}
 	}
 
-	// if !foundUser.IsEmailActive {
-	// 	return nil, apiError.New("email not verified", http.StatusUnauthorized)
-	// }
 
-	if err := foundUser.VerifyPassword(loginRequest.Password); err != nil {
-		return nil, apiError.ErrInvalidPassword
-	}
-
-	accessToken, refreshToken, err := jwt.GenerateTokenPair(foundUser.Email, a.Config.JWTSecret, foundUser.AdminStatus, foundUser.ID)
+	accessToken, refreshToken, err := jwt.GenerateTokenPair(foundUser.Email, a.Config.JWTSecret, foundUser.Role.Name, foundUser.ID)
 	if err != nil {
 		log.Printf("error generating token pair: %v", err)
 		return nil, apiError.ErrInternalServerError
@@ -143,9 +129,6 @@ func (a *authService) LoginUser(loginRequest *models.LoginRequest) (*models.Logi
 	return &models.LoginResponse{
 		UserResponse: models.UserResponse{
 			ID:        foundUser.ID,
-			Fullname:  foundUser.Fullname,
-			Username:  foundUser.Username,
-			Telephone: foundUser.Telephone,
 			Email:     foundUser.Email,
 		},
 		AccessToken:  accessToken,

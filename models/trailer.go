@@ -1,3 +1,6 @@
 package models
 
-type Trailer struct {}
+type Trailers struct {
+	Model
+	Title string
+}

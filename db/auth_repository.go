@@ -28,8 +28,6 @@ type AuthRepository interface {
 	EditUserProfile(userID uint, userDetails *models.EditProfileResponse) error
 	FindUserByMacAddress(macAddress string) (*models.LoginRequestMacAddress, error)
 	ResetPassword(userID, NewPassword string) error
-	UpdateUserStatus(user *models.User) error
-	UpdateUserOnlineStatus(user *models.User) error
 	SetUserOffline(user *models.User) error
 	GetOnlineUserCount() (int64, error)
 	GetAllUsers() ([]models.User, error)
@@ -196,7 +194,6 @@ func (a *authRepo) CreateUserImage(user *models.User) error {
     // Assuming you have a UserImage model or similar
     newUserImage := models.UserImage{
         UserID:      user.ID,
-        ThumbNailURL: user.ThumbNailURL,
         CreatedAt:   time.Now(),
     }
 
@@ -223,8 +220,8 @@ func (a *authRepo) EditUserProfile(userID uint, userDetails *models.EditProfileR
 	}
 
 	// Update user details based on userDetails
-	user.Fullname = userDetails.Fullname
-	user.Username = userDetails.Username
+	// user.Fullname = userDetails.Fullname
+	// user.Username = userDetails.Username
 	// Update other fields as needed
 
 	// Perform the update operation
@@ -238,26 +235,6 @@ func (a *authRepo) EditUserProfile(userID uint, userDetails *models.EditProfileR
 func (a *authRepo) ResetPassword(userID, NewPassword string) error {
 	result := a.DB.Model(models.User{}).Where("id = ?", userID).Update("hashed_password", NewPassword)
 	return result.Error
-}
-
-// Function in your repository to update the user's status
-func (a *authRepo) UpdateUserStatus(user *models.User) error {
-	return a.DB.Model(&models.User{}).Where("id = ?", user.ID).Update("online", user.Online).Error
-}
-
-func (a *authRepo) UpdateUserOnlineStatus(user *models.User) error {
-	log.Printf("Attempting to update user status: ID=%d, Online=%v", user.ID, user.Online)
-	result := a.DB.Model(&models.User{}).Where("id = ?", user.ID).Update("online", user.Online)
-	if result.Error != nil {
-		log.Printf("Error updating user status: %v", result.Error)
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		log.Printf("No rows affected when updating user status for user ID: %d", user.ID)
-		return fmt.Errorf("no rows affected")
-	}
-	log.Printf("Successfully updated user status for user ID: %d", user.ID)
-	return nil
 }
 
 func (a *authRepo) SetUserOffline(user *models.User) error {
