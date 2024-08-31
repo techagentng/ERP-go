@@ -33,6 +33,7 @@ type User struct {
     Role      Role           `gorm:"type:varchar(20)"`
 	IsEmailActive  bool           `json:"-"`
 	HashedPassword string         `json:"-"`
+	AdminStatus    bool           `json:"is_admin" gorm:"foreignKey:Status"`
 }
 
 type Admin struct {

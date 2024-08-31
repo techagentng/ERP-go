@@ -32,6 +32,7 @@ type AuthRepository interface {
 	GetOnlineUserCount() (int64, error)
 	GetAllUsers() ([]models.User, error)
 	CreateUserImage(user *models.User) error
+	GetUserRoleByUserID(userID uint) (*models.Role, error)
 }
 
 type authRepo struct {
@@ -270,4 +271,31 @@ func (a *authRepo) GetAllUsers() ([]models.User, error) {
 		return nil, result.Error
 	}
 	return users, nil
+}
+
+// GetUserRoleByUserID fetches the role associated with a given user ID.
+func (a *authRepo) GetUserRoleByUserID(userID uint) (*models.Role, error) {
+    // Define a variable to hold the user's role.
+    var role models.Role
+
+    // Query the database to find the role associated with the userID.
+    // Assuming a join between the users and roles tables, or a direct relation.
+    err := a.DB.Table("roles").
+        Select("roles.*").
+        Joins("JOIN user_roles ON user_roles.role_id = roles.id").
+        Where("user_roles.user_id = ?", userID).
+        First(&role).Error
+
+    // Check if the role was found or if an error occurred during the query.
+    if err != nil {
+        if err == gorm.ErrRecordNotFound {
+            // If no role is found, return a nil role and a custom error.
+            return nil, fmt.Errorf("no role found for user with ID %d", userID)
+        }
+        // For any other error, return it.
+        return nil, err
+    }
+
+    // Return the role if found, otherwise return nil and an error.
+    return &role, nil
 }

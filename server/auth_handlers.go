@@ -436,39 +436,47 @@ func (srv *Server) getUserInfoFromGoogle(token string) (*GoogleUser, error) {
 }
 
 func (s *Server) SocialAuthenticate(authRequest *AuthRequest, authPayloadOption func(*AuthPayload), c *gin.Context) (*AuthPayload, error) {
-	// Get the user ID from the context
-	userID, ok := c.Get("userID")
-	if !ok {
-		return nil, fmt.Errorf("userID not found in context")
-	}
+    // Get the user ID from the context
+    userID, ok := c.Get("userID")
+    if !ok {
+        return nil, fmt.Errorf("userID not found in context")
+    }
 
-	userIDString, ok := userID.(uint)
-	if !ok {
-		// Handle the case where userID is not a string
-		log.Println("userID is not a string")
-		return nil, nil
-	}
-	// Get email, isAdmin, and id from authRequest or other sources
-	email := authRequest.email
-	isAdmin := false
+    userIDUint, ok := userID.(uint)
+    if !ok {
+        log.Println("userID is not a uint")
+        return nil, fmt.Errorf("userID is not a valid uint")
+    }
 
-	// Call GenerateTokenPair with the obtained values
-	accessToken, refreshToken, err := jwtPackage.GenerateTokenPair(email, s.Config.GoogleClientSecret, isAdmin, userIDString)
-	if err != nil {
-		return nil, err
-	}
+    // Get email from authRequest
+    email := authRequest.email
 
-	// Construct AuthPayload and return
-	payload := &AuthPayload{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    int(AccessTokenDuration.Seconds()),
-	}
+    // Fetch the role from the repository based on userID
+    userRole, err := s.AuthRepository.GetUserRoleByUserID(userIDUint)
+    if err != nil {
+        return nil, fmt.Errorf("failed to retrieve role for user: %v", err)
+    }
 
-	authPayloadOption(payload)
+    // Determine if the user is an admin
+    isAdmin := userRole.Name == "admin"
 
-	return payload, nil
+    // Pass the role name to GenerateTokenPair
+    accessToken, refreshToken, err := jwtPackage.GenerateTokenPair(email, s.Config.GoogleClientSecret, isAdmin, userIDUint, userRole.Name)
+    if err != nil {
+        return nil, err
+    }
+
+    // Construct AuthPayload and return
+    payload := &AuthPayload{
+        AccessToken:  accessToken,
+        RefreshToken: refreshToken,
+        TokenType:    "Bearer",
+        ExpiresIn:    int(AccessTokenDuration.Seconds()),
+    }
+
+    authPayloadOption(payload)
+
+    return payload, nil
 }
 
 // validateState checks the state string with the system jwt secret while also validating the state validity

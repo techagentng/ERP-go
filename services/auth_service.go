@@ -119,13 +119,16 @@ func (a *authService) LoginUser(loginRequest *models.LoginRequest) (*models.Logi
 		}
 	}
 
+	var role models.Role
 
-	accessToken, refreshToken, err := jwt.GenerateTokenPair(foundUser.Email, a.Config.JWTSecret, foundUser.Role.Name, foundUser.ID)
-	if err != nil {
-		log.Printf("error generating token pair: %v", err)
-		return nil, apiError.ErrInternalServerError
-	}
-
+	    // Generate tokens with role information
+		log.Printf("Generating token pair for user %s with role %s", foundUser.Email, role.Name)
+		accessToken, refreshToken, err := jwt.GenerateTokenPair(foundUser.Email, a.Config.JWTSecret, foundUser.AdminStatus, foundUser.ID, role.Name)
+		if err != nil {
+			log.Printf("Error generating token pair for user %s: %v", foundUser.Email, err)
+			return nil, apiError.ErrInternalServerError
+		}
+		
 	return &models.LoginResponse{
 		UserResponse: models.UserResponse{
 			ID:        foundUser.ID,
