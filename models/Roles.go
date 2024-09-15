@@ -1,6 +1,13 @@
 package models
 
+import "github.com/google/uuid"
+// Reward represents rewards earned by users
 type Role struct {
-	ID   uint   `gorm:"primaryKey"`
-	Name string `gorm:"size:255;unique;not null"`
+    ID   uuid.UUID `gorm:"type:uuid;primary_key" json:"id"`
+    Name string    `json:"name"`
 }
+
+const (
+    RoleUser  = "User"
+    RoleAdmin = "Admin"
+)

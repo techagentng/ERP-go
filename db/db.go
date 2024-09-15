@@ -1,13 +1,16 @@
 package db
 
 import (
+	"errors"
 	"fmt"
+	"log"
+
+	"github.com/google/uuid"
 	"github.com/techagentng/telair-erp/config"
 	"github.com/techagentng/telair-erp/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"log"
 )
 
 type GormDB struct {
@@ -48,11 +51,27 @@ func getPostgresDB(c *config.Config) *gorm.DB {
 	return gormDB
 }
 
+func SeedRoles(db *gorm.DB) error {
+    roles := []models.Role{
+        {ID: uuid.New(), Name: "Admin"},
+        {ID: uuid.New(), Name: "User"},
+    }
+
+    for _, role := range roles {
+        if err := db.FirstOrCreate(&role, models.Role{Name: role.Name}).Error; err != nil {
+            return err
+        }
+    }
+
+    return nil
+}
+
 func migrate(db *gorm.DB) error {
 	// AutoMigrate all the models
 	err := db.AutoMigrate(
 		&models.User{},
 		&models.Trailers{},
+		&models.Role{}, 
 	)
 	if err != nil {
 		return fmt.Errorf("migrations error: %v", err)
@@ -61,4 +80,24 @@ func migrate(db *gorm.DB) error {
 	// Add any additional migrations here if needed
 
 	return nil
+}
+
+func seedRoles(db *gorm.DB) error {
+    roles := []string{"Admin", "User"}
+
+    for _, roleName := range roles {
+        var existingRole models.Role
+        if err := db.Where("name = ?", roleName).First(&existingRole).Error; err != nil {
+            if errors.Is(err, gorm.ErrRecordNotFound) {
+                newRole := models.Role{Name: roleName}
+                if err := db.Create(&newRole).Error; err != nil {
+                    return fmt.Errorf("error creating role %s: %v", roleName, err)
+                }
+                log.Printf("Role %s created successfully", roleName)
+            } else {
+                return fmt.Errorf("error checking role existence: %v", err)
+            }
+        }
+    }
+    return nil
 }

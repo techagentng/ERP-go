@@ -150,43 +150,56 @@ func (s *Server) handleSignup() gin.HandlerFunc {
             return
         }
 
-        // Initialize the file path variable
-        var filePath string
+        var filePath string // This will hold the S3 URL
 
         // Get the profile image from the form
         file, handler, err := c.Request.FormFile("profile_image")
         if err == nil {
-            // If file is provided, handle it
             defer file.Close()
-            
-            // Save the image to the specified directory
-            filePath = fmt.Sprintf("uploads/%s", handler.Filename)
-            out, err := os.Create(filePath)
+
+            // Create S3 client
+            s3Client, err := createS3Client()
             if err != nil {
                 response.JSON(c, "", http.StatusInternalServerError, nil, err)
                 return
             }
-            defer out.Close()
 
-            _, err = io.Copy(out, file)
+            // Generate unique filename
+            userID := c.PostForm("user_id") 
+            filename := fmt.Sprintf("%s_%s", userID, handler.Filename)
+
+            // Upload file to S3
+            filePath, err = uploadFileToS3(s3Client, file, os.Getenv("AWS_BUCKET"), filename)
             if err != nil {
                 response.JSON(c, "", http.StatusInternalServerError, nil, err)
                 return
             }
         } else if err == http.ErrMissingFile {
-            // If no file is provided, set a default image path or URL
-            filePath = "uploads/default-profile.png" // Adjust this path as necessary
+            filePath = "uploads/default-profile.png" // Adjust this to a default S3 URL if necessary
         } else {
-            // Handle other errors
             response.JSON(c, "", http.StatusBadRequest, nil, err)
             return
         }
 
         // Decode the other form data into the user struct
         var user models.User
-    
+        user.Fullname = c.PostForm("fullname")
+        user.Username = c.PostForm("username")
+        user.Telephone = c.PostForm("telephone")
         user.Email = c.PostForm("email")
         user.Password = c.PostForm("password")
+        user.ThumbNailURL = filePath // Set the S3 URL in the user struct
+
+        // Fetch the UUID for the role
+        role, err := s.AuthService.GetRoleByName("User") // Use a service method to fetch the role by name
+        if err != nil {
+            response.JSON(c, "", http.StatusInternalServerError, nil, err)
+            return
+        }
+        log.Printf("Fetched role ID for 'User': %s", role.ID.String())
+
+        // Assign the role UUID directly to RoleID
+        user.RoleID = role.ID
 
         // Validate the user data using the validator package
         validate := validator.New()

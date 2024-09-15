@@ -7,7 +7,11 @@ import (
 	"fmt"
 
 	// "io/ioutil"
+	"log"
+	"net/http"
+
 	_ "github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	_ "github.com/golang-jwt/jwt"
 	"github.com/techagentng/telair-erp/config"
 	"github.com/techagentng/telair-erp/db"
@@ -16,8 +20,6 @@ import (
 	"github.com/techagentng/telair-erp/services/jwt"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"log"
-	"net/http"
 )
 
 //go:generate mockgen -destination=../mocks/auth_mock.go -package=mocks github.com/decagonhq/meddle-api/services AuthService
@@ -35,7 +37,7 @@ type AuthService interface {
 	SendEmailForPasswordReset(user *models.ForgotPassword) *apiError.Error
 	ResetPassword(user *models.ResetPassword, token string) *apiError.Error
 	GetAllUsers() ([]models.User, error)
-	// DeleteUserByEmail(userEmail string) *apiError.Error
+	GetRoleByName(name string) (*models.Role, error)
 }
 
 // authService struct
@@ -108,36 +110,66 @@ func GenerateHashPassword(password string) (string, error) {
 
 // LoginUser logs in a user and returns the login response
 func (a *authService) LoginUser(loginRequest *models.LoginRequest) (*models.LoginResponse, *apiError.Error) {
-	foundUser, err := a.authRepo.FindUserByEmail(loginRequest.Email)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, apiError.New("invalid email or password", http.StatusUnprocessableEntity)
-		} else {
-			log.Printf("error from database: %v", err)
+    // Find the user by email
+    foundUser, err := a.authRepo.FindUserByEmail(loginRequest.Email)
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return nil, apiError.New("invalid email or password", http.StatusUnprocessableEntity)
+        }
+        log.Printf("Error finding user by email: %v", err)
+        return nil, apiError.New("unable to find user", http.StatusInternalServerError)
+    }
 
-			return nil, apiError.New("unable to find user", http.StatusInternalServerError)
-		}
-	}
+    // Verify user password
+    if err := foundUser.VerifyPassword(loginRequest.Password); err != nil {
+        log.Printf("Invalid password for user %s", foundUser.Email)
+        return nil, apiError.ErrInvalidPassword
+    }
 
-	var role models.Role
+    if foundUser.RoleID == uuid.Nil {
+        log.Printf("User %s does not have a role assigned", foundUser.Email)
+        return nil, apiError.New("user role not assigned", http.StatusInternalServerError)
+    }
 
-	    // Generate tokens with role information
-		log.Printf("Generating token pair for user %s with role %s", foundUser.Email, role.Name)
-		accessToken, refreshToken, err := jwt.GenerateTokenPair(foundUser.Email, a.Config.JWTSecret, foundUser.AdminStatus, foundUser.ID, role.Name)
-		if err != nil {
-			log.Printf("Error generating token pair for user %s: %v", foundUser.Email, err)
-			return nil, apiError.ErrInternalServerError
-		}
-		
-	return &models.LoginResponse{
-		UserResponse: models.UserResponse{
-			ID:        foundUser.ID,
-			Email:     foundUser.Email,
-		},
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-	}, nil
+    // Convert github.com/google/uuid.UUID to github.com/gofrs/uuid.UUID
+    convertedRoleID, err := uuid.Parse(foundUser.RoleID.String())
+    if err != nil {
+        log.Printf("Error converting RoleID for user %s: %v", foundUser.Email, err)
+        return nil, apiError.New("unable to convert role ID", http.StatusInternalServerError)
+    }
+
+    // Fetch the user's role
+    log.Printf("Fetching role with ID: %s for user %s", foundUser.RoleID.String(), foundUser.Email)
+    role, err := a.authRepo.FindRoleByID(convertedRoleID)
+    if err != nil {
+        log.Printf("Error fetching role for user %s: %v", foundUser.Email, err)
+        return nil, apiError.New("unable to fetch role", http.StatusInternalServerError)
+    }
+    
+    roleName := role.Name
+
+    // Generate tokens with role information
+    log.Printf("Generating token pair for user %s with role %s", foundUser.Email, roleName)
+    accessToken, refreshToken, err := jwt.GenerateTokenPair(foundUser.Email, a.Config.JWTSecret, foundUser.AdminStatus, foundUser.ID, roleName)
+    if err != nil {
+        log.Printf("Error generating token pair for user %s: %v", foundUser.Email, err)
+        return nil, apiError.ErrInternalServerError
+    }
+
+    return &models.LoginResponse{
+        UserResponse: models.UserResponse{
+            ID:        foundUser.ID,
+            Fullname:  foundUser.Fullname,
+            Username:  foundUser.Username,
+            Telephone: foundUser.Telephone,
+            Email:     foundUser.Email,
+            RoleName:  roleName, 
+        },
+        AccessToken:  accessToken,
+        RefreshToken: refreshToken,
+    }, nil
 }
+
 
 func (a *authService) VerifyEmail(token string) error {
 	claims, err := jwt.ValidateAndGetClaims(token, a.Config.JWTSecret)
@@ -214,4 +246,13 @@ func (s *authService) GetAllUsers() ([]models.User, error) {
 		return nil, fmt.Errorf("error getting all users: %w", err)
 	}
 	return users, nil
+}
+
+func (a *authService) GetRoleByName(name string) (*models.Role, error) {
+    // Call the repository method to fetch the role
+    role, err := a.authRepo.FindRoleByName(name)
+    if err != nil {
+        return nil, err
+    }
+    return role, nil
 }

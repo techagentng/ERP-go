@@ -1,12 +1,14 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 	ew "github.com/pkg/errors"
-	"errors"
 	"github.com/techagentng/telair-erp/models"
 	"gorm.io/gorm"
 )
@@ -33,6 +35,8 @@ type AuthRepository interface {
 	GetAllUsers() ([]models.User, error)
 	CreateUserImage(user *models.User) error
 	GetUserRoleByUserID(userID uint) (*models.Role, error)
+	FindRoleByName(name string) (*models.Role, error)
+	FindRoleByID(roleID uuid.UUID) (*models.Role, error)
 }
 
 type authRepo struct {
@@ -298,4 +302,26 @@ func (a *authRepo) GetUserRoleByUserID(userID uint) (*models.Role, error) {
 
     // Return the role if found, otherwise return nil and an error.
     return &role, nil
+}
+
+// FindRoleByName fetches a role by its name from the database.
+func (a *authRepo) FindRoleByName(name string) (*models.Role, error) {
+    var role models.Role
+    if err := a.DB.Where("name = ?", name).First(&role).Error; err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Println("Role not foundx-:", name)
+            return nil, errors.New("role not found--x")
+        }
+        return nil, err
+    }
+    return &role, nil
+}
+
+// FindRoleByID retrieves a role by its ID from the database.
+func (r *authRepo) FindRoleByID(roleID uuid.UUID) (*models.Role, error) {
+    var role *models.Role
+    if err := r.DB.Where("id = ?", roleID).First(&role).Error; err != nil {
+        return nil, err
+    }
+    return role, nil
 }
