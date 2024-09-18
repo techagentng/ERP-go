@@ -2,8 +2,6 @@ package models
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
 type MovieStatus string
@@ -20,5 +18,5 @@ type MovieBase struct {
 	Duration    int            `gorm:"not null"` // Duration in minutes
 	UploadedAt  time.Time      `gorm:"autoCreateTime"`
 	Status      MovieStatus    `gorm:"type:varchar(20);default:'Pending'"`
-	DeletedAt   gorm.DeletedAt `gorm:"index"`
+	DeletedAt   int64 
 }

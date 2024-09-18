@@ -31,7 +31,7 @@ import (
 )
 
 func createS3Client() (*s3.Client, error) {
-    cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("your-region"))
+    cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("eu-north-1"))
     if err != nil {
         return nil, fmt.Errorf("unable to load SDK config, %v", err)
     }

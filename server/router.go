@@ -73,16 +73,17 @@ func (s *Server) setupRouter() *gin.Engine {
 }
 
 func (s *Server) defineRoutes(router *gin.Engine) {
-	// store := rateLimit.InMemoryStore(&rateLimit.InMemoryOptions{})
-	// limitRate := limitRateForPasswordReset(store)
 
-	apirouter := router.Group("/api/v1")
-	apirouter.POST("/auth/signup", s.handleSignup())
-	apirouter.POST("/auth/login", s.handleLogin())
+    apirouter := router.Group("/api/v1")
+    apirouter.POST("/auth/signup", s.handleSignup())
+    apirouter.POST("/auth/login", s.handleLogin())
 
-	authorized := apirouter.Group("/")
-	authorized.Use(s.Authorize())
-	// Upload endpoint
-	// authorized.GET("/logout", s.handleLogout())
+    // Define the authorized group and apply the Authorize middleware
+    authorized := apirouter.Group("/")
+    authorized.Use(s.Authorize()) 
 
+    // Define routes within the authorized group
+    authorized.POST("/upload-trailer", s.handleUploadTrailer())
+    // authorized.GET("/logout", s.handleLogout())
 }
+

@@ -20,6 +20,7 @@ type Server struct {
 	AuthRepository           db.AuthRepository
 	AuthService              services.AuthService
 	Mail                     mailingservices.Mailer
+	MovieRepository          db.MovieRepository
 	DB                       db.GormDB
 }
 

@@ -70,7 +70,7 @@ func migrate(db *gorm.DB) error {
 	// AutoMigrate all the models
 	err := db.AutoMigrate(
 		&models.User{},
-		&models.Trailers{},
+		&models.Trailer{},
 		&models.Role{}, 
 	)
 	if err != nil {

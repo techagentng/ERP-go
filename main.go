@@ -26,7 +26,7 @@ func main() {
 		log.Fatalf("error seeding roles: %v", err)
 	}
 	authRepo := db.NewAuthRepo(gormDB)
-	// mediaRepo := db.NewMediaRepo(gormDB)
+	movieRepo := db.NewMovieRepo(gormDB)
 	// incidentReportRepo := db.NewIncidentReportRepo(gormDB)
 	// rewardRepo := db.NewRewardRepo(gormDB)
 	// likeRepo := db.NewLikeRepo(gormDB)
@@ -42,7 +42,7 @@ func main() {
 		Config:                   conf,
 		AuthRepository:           authRepo,
 		AuthService:              authService,
-		// MediaRepository:          mediaRepo,
+		MovieRepository:          movieRepo,
 		// MediaService:             mediaService,
 		// IncidentReportService:    incidentReportService,
 		// IncidentReportRepository: incidentReportRepo,
