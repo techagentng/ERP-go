@@ -84,6 +84,7 @@ func (s *Server) defineRoutes(router *gin.Engine) {
 
     // Define routes within the authorized group
     authorized.POST("/upload-trailer", s.handleUploadTrailer())
-    // authorized.GET("/logout", s.handleLogout())
+    authorized.GET("/upload/progress/:sessionID", s.checkUploadProgress())
+
 }
 

@@ -12,8 +12,11 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/oauth2"
@@ -22,6 +25,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/gin-gonic/gin"
 	"github.com/techagentng/telair-erp/errors"
 	errs "github.com/techagentng/telair-erp/errors"
@@ -31,12 +35,21 @@ import (
 )
 
 func createS3Client() (*s3.Client, error) {
-    cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("eu-north-1"))
+    cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(os.Getenv("AWS_REGION")))
     if err != nil {
         return nil, fmt.Errorf("unable to load SDK config, %v", err)
     }
-
     return s3.NewFromConfig(cfg), nil
+}
+
+// A map to hold content types based on file extensions
+var contentTypes = map[string]string{
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".png":  "image/png",
+	".mp4":  "video/mp4",
+	".avi":  "video/x-msvideo",
+	// Add more as needed
 }
 
 func uploadFileToS3(client *s3.Client, file multipart.File, bucketName, key string) (string, error) {
@@ -48,19 +61,31 @@ func uploadFileToS3(client *s3.Client, file multipart.File, bucketName, key stri
         return "", fmt.Errorf("failed to read file content: %v", err)
     }
 
+		// Determine file extension and content type
+		extension := filepath.Ext(key)
+		contentType, exists := contentTypes[extension]
+		if !exists {
+			contentType = "application/octet-stream" // Default content type
+		}
+		
+			// Remove whitespace from the file content
+	trimmedContent := strings.TrimSpace(string(fileContent))
+	fileContent = []byte(trimmedContent)
+	key = strings.ReplaceAll(key, " ", "_") 
     // Upload the file to S3
     _, err = client.PutObject(context.TODO(), &s3.PutObjectInput{
         Bucket: aws.String(bucketName),
         Key:    aws.String(key),
         Body:   bytes.NewReader(fileContent),
-        ContentType: aws.String("image/jpeg"), // or the appropriate content type
+        ContentType: aws.String(contentType), 
+		ACL:    types.ObjectCannedACLPublicRead,
     })
     if err != nil {
         return "", fmt.Errorf("failed to upload file to S3: %v", err)
     }
 
     // Return the S3 URL of the uploaded file
-    fileURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucketName, "your-region", key)
+    fileURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucketName, os.Getenv("AWS_REGION"), key)
     return fileURL, nil
 }
 

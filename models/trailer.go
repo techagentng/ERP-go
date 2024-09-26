@@ -13,3 +13,8 @@ type Trailer struct {
 	User         User     `gorm:"foreignKey:UserID" json:"user"`
 }
 
+type UploadProgress struct {
+	TotalFiles      int     `json:"total_files"`
+	UploadedFiles   int     `json:"uploaded_files"`
+	Percentage      float64 `json:"percentage"`
+}

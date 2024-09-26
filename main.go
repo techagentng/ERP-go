@@ -16,6 +16,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	
 	// Initialize Mailgun client
 	mailgunClient := &mailingservices.Mailgun{}
 	mailgunClient.Init()

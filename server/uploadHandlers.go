@@ -3,190 +3,88 @@ package server
 import (
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strconv"
-	"strings" 
+	"strings"
+	"sync"
+	
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/techagentng/telair-erp/errors"
 	"github.com/techagentng/telair-erp/models"
 	"github.com/techagentng/telair-erp/server/response"
 )
 
-// func getContentType(fileName string) string {
-//     ext := filepath.Ext(fileName)
-//     switch ext {
-//     case ".jpg", ".jpeg":
-//         return "image/jpeg"
-//     case ".png":
-//         return "image/png"
-//     case ".gif":
-//         return "image/gif"
-//     case ".mp4":
-//         return "video/mp4"
-//     case ".avi":
-//         return "video/x-msvideo"
-//     default:
-//         return "application/octet-stream"
-//     }
-// }
+// Define allowed file types and maximum size
+var (
+	allowedFileTypes = map[string]bool{
+		"video/mp4":  true,
+		"video/avi":  true,
+		"image/jpeg": true,
+		"image/png":  true,
+		// Add more allowed types as needed
+	}
+	maxFileSize int64 = 50 << 20 // 50 MB
+)
 
-// func uploadFileToS3t(client *s3.S3, file multipart.File, bucketName, key, region string) (string, error) {
-//     defer file.Close()
+// Function to validate file types and sizes
+func validateFile(fileHeader *multipart.FileHeader) error {
+	if _, ok := allowedFileTypes[fileHeader.Header.Get("Content-Type")]; !ok {
+		return fmt.Errorf("invalid file type: %s", fileHeader.Filename)
+	}
+	if fileHeader.Size > maxFileSize {
+		return fmt.Errorf("file %s exceeds the maximum allowed size of %d bytes", fileHeader.Filename, maxFileSize)
+	}
+	return nil
+}
 
-//     // Read the file content
-//     fileContent, err := io.ReadAll(file)
-//     if err != nil {
-//         return "", fmt.Errorf("failed to read file content: %v", err)
-//     }
-
-//     // Upload the file to S3
-//     _, err = client.PutObject(&s3.PutObjectInput{
-//         Bucket:      aws.String(bucketName),
-//         Key:         aws.String(key),
-//         Body:        bytes.NewReader(fileContent),
-//         ContentType: aws.String(getContentType(key)), 
-// 		ACL:         aws.String("public-read"),
-//     })
-//     if err != nil {
-//         return "", fmt.Errorf("failed to upload file to S3: %v", err)
-//     }
-
-//     // Return the S3 URL of the uploaded file
-//     fileURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucketName, region, key)
-//     return fileURL, nil
-// }
-
-
+// Gin handler for uploading a trailer
 func (s *Server) handleUploadTrailer() gin.HandlerFunc {
     return func(c *gin.Context) {
         // Parse multipart form data with a 50 MB limit
         if err := c.Request.ParseMultipartForm(50 << 20); err != nil {
-            log.Printf("Failed to parse form data: %v", err)
-            response.JSON(c, "", http.StatusBadRequest, nil, fmt.Errorf("failed to parse form data: %w", err))
+            logErrorAndRespond(c, "Failed to parse form data", err, http.StatusBadRequest)
             return
         }
 
         // Get userID from context
-        userIDCtx, exists := c.Get("userID")
-        if !exists {
-            log.Println("Unauthorized: userID not found in context")
-            response.JSON(c, "", http.StatusUnauthorized, nil, fmt.Errorf("unauthorized"))
-            return
-        }
-
-        // Assert userID as uint
-        userID, ok := userIDCtx.(uint)
-        if !ok {
-            log.Println("Invalid userID format in context")
-            response.JSON(c, "", http.StatusBadRequest, nil, fmt.Errorf("invalid userID format"))
-            return
-        }
-
-        // Initialize file paths for S3
-        var videoFilePaths []string
-        var pictureFilePaths []string
-
-        // Process video files
-        videoFiles := c.Request.MultipartForm.File["videos"]
-        for _, videoFile := range videoFiles {
-            file, err := videoFile.Open()
-            if err != nil {
-                log.Printf("Failed to open video file: %v", err)
-                response.JSON(c, "", http.StatusInternalServerError, nil, fmt.Errorf("failed to open video file: %w", err))
-                return
-            }
-            defer file.Close()
-
-            // Generate unique filename and upload to S3
-            filename := fmt.Sprintf("videos/%s", videoFile.Filename)
-            s3Client, err := createS3Client()
-            if err != nil {
-                log.Printf("Failed to create S3 client: %v", err)
-                response.JSON(c, "", http.StatusInternalServerError, nil, fmt.Errorf("failed to create S3 client: %w", err))
-                return
-            }
-
-            filePath, err := uploadFileToS3(s3Client, file, os.Getenv("AWS_BUCKET"), filename)
-            if err != nil {
-                log.Printf("Failed to upload video file to S3: %v", err)
-                response.JSON(c, "", http.StatusInternalServerError, nil, fmt.Errorf("failed to upload video file to S3: %w", err))
-                return
-            }
-
-            videoFilePaths = append(videoFilePaths, filePath)
-        }
-
-        // Process picture files
-        pictureFiles := c.Request.MultipartForm.File["pictures"]
-        for _, pictureFile := range pictureFiles {
-            file, err := pictureFile.Open()
-            if err != nil {
-                log.Printf("Failed to open picture file: %v", err)
-                response.JSON(c, "", http.StatusInternalServerError, nil, fmt.Errorf("failed to open picture file: %w", err))
-                return
-            }
-            defer file.Close()
-
-            // Generate unique filename and upload to S3
-            filename := fmt.Sprintf("pictures/%s", pictureFile.Filename)
-            s3Client, err := createS3Client()
-            if err != nil {
-                log.Printf("Failed to create S3 client: %v", err)
-                response.JSON(c, "", http.StatusInternalServerError, nil, fmt.Errorf("failed to create S3 client: %w", err))
-                return
-            }
-
-            filePath, err := uploadFileToS3(s3Client, file, os.Getenv("AWS_BUCKET"), filename)
-            if err != nil {
-                log.Printf("Failed to upload picture file to S3: %v", err)
-                response.JSON(c, "", http.StatusInternalServerError, nil, fmt.Errorf("failed to upload picture file to S3: %w", err))
-                return
-            }
-            pictureFilePaths = append(pictureFilePaths, filePath)
-        }
-
-        // Convert video and picture file paths to comma-separated strings
-        videoURLsStr := strings.Join(videoFilePaths, ",")
-        pictureURLsStr := strings.Join(pictureFilePaths, ",")
-
-        // Process other form fields
-        logLine := c.PostForm("log_line")
-        productYear := c.PostForm("product_year")
-
-        // Retrieve stars from form
-        star1 := c.PostForm("star1")
-        star2 := c.PostForm("star2")
-        star3 := c.PostForm("star3")
-
-        // Convert duration from string to int
-        durationStr := c.PostForm("duration")
-        duration, err := strconv.Atoi(durationStr)
+        userID, err := getUserIDFromContext(c)
         if err != nil {
-            log.Printf("Invalid duration value: %v", err)
-            duration = 0
+            logErrorAndRespond(c, "Unauthorized", err, http.StatusUnauthorized)
+            return
         }
 
-        // Create and populate Trailer struct
-        trailer := models.Trailer{
-            MovieBase: models.MovieBase{
-                Title:       c.PostForm("title"),
-                Description: c.PostForm("description"),
-                Duration:    duration,
-            },
-            LogLine:     logLine,
-            ProductYear: productYear,
-            Star1:       star1,
-            Star2:       star2,
-            Star3:       star3,
-            VideoURLs:   videoURLsStr,
-            PictureURLs: pictureURLsStr,
-            UserID:      userID,
+        // Create S3 client once
+        s3Client, err := createS3Client()
+        if err != nil {
+            logErrorAndRespond(c, "Failed to create S3 client", err, http.StatusInternalServerError)
+            return
         }
 
-        // Save trailer to database
+        // Upload files and get URLs
+        videoURLs, pictureURLs, err := uploadTrailerFiles(c, s3Client, "videos")
+        if err != nil {
+            logErrorAndRespond(c, "Failed to upload files", err, http.StatusInternalServerError)
+            return
+        }
+
+        // Convert file paths to comma-separated strings
+        videoURLsStr := strings.Join(videoURLs, ",")
+        pictureURLsStr := strings.Join(pictureURLs, ",")
+
+        // Process form fields
+        trailer, err := createTrailerFromForm(c, userID, videoURLsStr, pictureURLsStr)
+        if err != nil {
+            logErrorAndRespond(c, "Failed to process trailer data", err, http.StatusBadRequest)
+            return
+        }
+
+        // Save trailer to the database
         if err := s.MovieRepository.CreateTrailer(&trailer); err != nil {
-            log.Printf("Failed to create trailer: %v", err)
-            response.JSON(c, "", http.StatusInternalServerError, nil, fmt.Errorf("failed to create trailer: %w", err))
+            logErrorAndRespond(c, "Failed to create trailer", err, http.StatusInternalServerError)
             return
         }
 
@@ -194,7 +92,197 @@ func (s *Server) handleUploadTrailer() gin.HandlerFunc {
     }
 }
 
+// Mock in-memory store for upload progress tracking (replace with a persistent store in production)
+var uploadProgressStore = make(map[string]*models.UploadProgress)
 
+// Function to track progress for a specific user upload session
+func trackProgress(sessionID string, uploadedFiles int, totalFiles int) {
+	progress := uploadProgressStore[sessionID]
+	if progress == nil {
+		progress = &models.UploadProgress{TotalFiles: totalFiles}
+		uploadProgressStore[sessionID] = progress
+	}
+	progress.UploadedFiles = uploadedFiles
+	progress.Percentage = float64(uploadedFiles) / float64(totalFiles) * 100
+
+	// You could broadcast this progress to the client using WebSockets or a similar mechanism
+}
+
+// uploadFiles uploads the files provided in the fileHeaders slice to S3 and returns the URLs of the uploaded files.
+func uploadFiles(fileHeaders []*multipart.FileHeader, folder string, s3Client *s3.Client) ([]string, error) {
+	filePaths := make([]string, 0)
+
+	for _, fileHeader := range fileHeaders {
+		// Open the file
+		file, err := fileHeader.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file %s: %w", fileHeader.Filename, err)
+		}
+		defer file.Close()
+
+		// Construct the S3 key (path)
+		s3Key := fmt.Sprintf("%s/%s", folder, fileHeader.Filename)
+
+		// Upload the file to S3
+		url, err := uploadFileToS3(s3Client, file, os.Getenv("AWS_BUCKET"), s3Key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to upload file %s to S3: %w", fileHeader.Filename, err)
+		}
+
+		filePaths = append(filePaths, url)
+	}
+
+	return filePaths, nil
+}
+
+func uploadTrailerFiles(c *gin.Context, s3Client *s3.Client, folder string) (videoURLs []string, pictureURLs []string, err error) {
+    sessionID := uuid.New().String()
+    // Handle video file upload concurrently
+    videoFilePaths, err := uploadFilesConcurrently(c.Request.MultipartForm.File["videos"], folder+"/videos", s3Client, sessionID)
+    if err != nil {
+        return nil, nil, err
+    }
+    videoURLs = videoFilePaths
+
+    // Handle picture file upload concurrently
+    pictureFilePaths, err := uploadFilesConcurrently(c.Request.MultipartForm.File["pictures"], folder+"/pictures", s3Client, sessionID)
+    if err != nil {
+        return nil, nil, err
+    }
+    pictureURLs = pictureFilePaths
+
+    return videoURLs, pictureURLs, nil
+}
+
+
+
+// Helper function to extract userID from context
+func getUserIDFromContext(c *gin.Context) (uint, error) {
+    userIDCtx, exists := c.Get("userID")
+    if !exists {
+        return 0, errors.New("userID not found in context", errors.ErrBadRequest.Status)
+    }
+
+    userID, ok := userIDCtx.(uint)
+    if !ok {
+        return 0, errors.New("invalid userID format", errors.ErrBadRequest.Status)
+    }
+    return userID, nil
+}
+
+// Function to upload files concurrently
+func uploadFilesConcurrently(files []*multipart.FileHeader, folder string, s3Client *s3.Client, sessionID string) ([]string, error) {
+    var filePaths []string
+    var wg sync.WaitGroup
+    var uploadErr error
+    var mu sync.Mutex
+
+    totalFiles := len(files)
+
+    for i, file := range files {
+        wg.Add(1)
+        go func(file *multipart.FileHeader, index int) {
+            defer wg.Done()
+
+            // Open the file
+            fileReader, err := file.Open()
+            if err != nil {
+                mu.Lock() // Protect shared variable
+                uploadErr = err
+                mu.Unlock()
+                return
+            }
+            defer fileReader.Close()
+
+            // Construct the filename for S3
+            filename := fmt.Sprintf("%s/%s", folder, file.Filename)
+            filePath, err := uploadFileToS3(s3Client, fileReader, os.Getenv("AWS_BUCKET"), filename)
+            if err != nil {
+                mu.Lock() // Protect shared variable
+                uploadErr = err
+                mu.Unlock()
+                return
+            }
+
+            // Store the uploaded file path
+            mu.Lock() // Protect shared variable
+            filePaths = append(filePaths, filePath)
+            mu.Unlock()
+
+            // Track progress
+            trackProgress(sessionID, index+1, totalFiles)
+        }(file, i)
+    }
+
+    // Wait for all goroutines to finish
+    wg.Wait()
+
+    // Return the uploaded file paths and any error that occurred
+    return filePaths, uploadErr
+}
+
+
+// Helper function to create trailer from form data
+func createTrailerFromForm(c *gin.Context, userID uint, videoURLs, pictureURLs string) (models.Trailer, error) {
+    durationStr := c.PostForm("duration")
+    duration, err := strconv.Atoi(durationStr)
+    if err != nil {
+        log.Printf("Invalid duration value: %v", err)
+        duration = 0
+    }
+
+    trailer := models.Trailer{
+        MovieBase: models.MovieBase{
+            Title:       c.PostForm("title"),
+            Description: c.PostForm("description"),
+            Duration:    duration,
+        },
+        LogLine:     c.PostForm("log_line"),
+        ProductYear: c.PostForm("product_year"),
+        Star1:       c.PostForm("star1"),
+        Star2:       c.PostForm("star2"),
+        Star3:       c.PostForm("star3"),
+        VideoURLs:   videoURLs,
+        PictureURLs: pictureURLs,
+        UserID:      userID,
+    }
+
+    return trailer, nil
+}
+
+// Helper function to log errors and send JSON response
+func logErrorAndRespond(c *gin.Context, message string, err error, statusCode int) {
+    log.Printf("%s: %v", message, err)
+    response.JSON(c, "", statusCode, nil, fmt.Errorf("%s: %w", message, err))
+}
+
+var (
+	// To store progress of uploads
+	progressMap = make(map[string]int)
+	mu          sync.Mutex
+)
+
+func (s *Server) checkUploadProgress() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Get the sessionID from the URL parameters
+        sessionID := c.Param("sessionID")
+
+        // Lock the mutex to safely access the progress map
+        mu.Lock()
+        defer mu.Unlock()
+
+        // Get the progress value from the map
+        progress, exists := progressMap[sessionID]
+        if !exists {
+            // If the sessionID does not exist, return a 404 status
+            c.JSON(http.StatusNotFound, gin.H{"error": "Session ID not found"})
+            return
+        }
+
+        // Return the progress value as a JSON response
+        c.JSON(http.StatusOK, gin.H{"sessionID": sessionID, "progress": progress})
+    }
+}
 
 
 
