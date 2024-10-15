@@ -108,33 +108,6 @@ func trackProgress(sessionID string, uploadedFiles int, totalFiles int) {
 	// You could broadcast this progress to the client using WebSockets or a similar mechanism
 }
 
-// uploadFiles uploads the files provided in the fileHeaders slice to S3 and returns the URLs of the uploaded files.
-func uploadFiles(fileHeaders []*multipart.FileHeader, folder string, s3Client *s3.Client) ([]string, error) {
-	filePaths := make([]string, 0)
-
-	for _, fileHeader := range fileHeaders {
-		// Open the file
-		file, err := fileHeader.Open()
-		if err != nil {
-			return nil, fmt.Errorf("failed to open file %s: %w", fileHeader.Filename, err)
-		}
-		defer file.Close()
-
-		// Construct the S3 key (path)
-		s3Key := fmt.Sprintf("%s/%s", folder, fileHeader.Filename)
-
-		// Upload the file to S3
-		url, err := uploadFileToS3(s3Client, file, os.Getenv("AWS_BUCKET"), s3Key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to upload file %s to S3: %w", fileHeader.Filename, err)
-		}
-
-		filePaths = append(filePaths, url)
-	}
-
-	return filePaths, nil
-}
-
 func uploadTrailerFiles(c *gin.Context, s3Client *s3.Client, folder string) (videoURLs []string, pictureURLs []string, err error) {
     sessionID := uuid.New().String()
     // Handle video file upload concurrently
@@ -153,8 +126,6 @@ func uploadTrailerFiles(c *gin.Context, s3Client *s3.Client, folder string) (vid
 
     return videoURLs, pictureURLs, nil
 }
-
-
 
 // Helper function to extract userID from context
 func getUserIDFromContext(c *gin.Context) (uint, error) {

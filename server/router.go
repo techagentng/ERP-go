@@ -39,7 +39,7 @@ func (s *Server) setupRouter() *gin.Engine {
 	// LoggerWithFormatter middleware will write the logs to gin.DefaultWriter
 	// By default gin.DefaultWriter = os.Stdout
 	r.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
-		// your custom format
+		// Your custom log format
 		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
 			param.ClientIP,
 			param.TimeStamp.Format(time.RFC1123),
@@ -52,20 +52,25 @@ func (s *Server) setupRouter() *gin.Engine {
 			param.ErrorMessage,
 		)
 	}))
+	
 	r.Use(gin.Recovery())
-
-	// allowedOrigins := []string{"http://localhost:3001"}
-	// if os.Getenv("GIN_MODE") == "release" {
-	// 	allowedOrigins = []string{"https://citizenx-dashboard-sbqx.onrender.com"} 
-	// }
+	
+	// Set allowed origins based on environment
+	allowedOrigins := []string{"http://localhost:3001"}
+	if os.Getenv("GIN_MODE") == "release" {
+		allowedOrigins = []string{"https://citizenx.ng"}
+	}
+	
 	// Use CORS middleware with appropriate configuration
 	r.Use(cors.New(cors.Config{
-		AllowAllOrigins: true,
+		AllowOrigins:     allowedOrigins, // Corrected from AllowAllOrigins to AllowOrigins
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
 		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
+
 	r.MaxMultipartMemory = 32 << 20
 	s.defineRoutes(r)
 
