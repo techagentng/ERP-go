@@ -10,6 +10,7 @@ import (
 
 type MovieRepository interface {
 	CreateTrailer(trailer *models.Trailer) error
+	UpdateTrailerMedia(trailerID uint, videoURLs, pictureURLs string) error
 }
 
 type movieRepo struct {
@@ -31,4 +32,19 @@ func (r *movieRepo) CreateTrailer(trailer *models.Trailer) error {
 	}
 
 	return nil
+}
+
+// func (r *movieRepo) UpdateTrailerMedia(trailerID, videoURLs, pictureURLs string) error {
+//     // Update the trailer with the provided media URLs
+//     return r.DB.Model(&models.Trailer{}).Where("id = ?", trailerID).Updates(map[string]interface{}{
+//         "video_urls":   videoURLs,
+//         "picture_urls": pictureURLs,
+//     }).Error
+// }
+func (r *movieRepo) UpdateTrailerMedia(trailerID uint, videoURLs, pictureURLs string) error {
+    // Update the trailer with the provided media URLs
+    return r.DB.Model(&models.Trailer{}).Where("id = ?", trailerID).Updates(map[string]interface{}{
+        "video_urls":   videoURLs,
+        "picture_urls": pictureURLs,
+    }).Error
 }

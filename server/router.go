@@ -58,12 +58,12 @@ func (s *Server) setupRouter() *gin.Engine {
 	// Set allowed origins based on environment
 	allowedOrigins := []string{"http://localhost:3001"}
 	if os.Getenv("GIN_MODE") == "release" {
-		allowedOrigins = []string{"https://citizenx.ng"}
+		allowedOrigins = []string{"https://erp-dashboard-32uq.onrender.com/"}
 	}
 	
 	// Use CORS middleware with appropriate configuration
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     allowedOrigins, // Corrected from AllowAllOrigins to AllowOrigins
+		AllowOrigins:     allowedOrigins, 
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
 		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type"},
 		AllowCredentials: true,

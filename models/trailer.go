@@ -2,6 +2,7 @@ package models
 
 type Trailer struct {
     MovieBase
+    TrailerID    uint   `gorm:"primaryKey" json:"trailer_id"`
     LogLine      string `gorm:"type:text"`
     ProductYear  string `gorm:"size:4"`
     Star1        string `gorm:"type:text;not null"`
