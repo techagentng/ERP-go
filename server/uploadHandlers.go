@@ -9,13 +9,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	
+
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/techagentng/telair-erp/errors"
 	"github.com/techagentng/telair-erp/models"
 	"github.com/techagentng/telair-erp/server/response"
+	jwtPackage "github.com/techagentng/telair-erp/services/jwt"
 )
 
 // Define allowed file types and maximum size
@@ -44,20 +45,45 @@ func validateFile(fileHeader *multipart.FileHeader) error {
 // Gin handler for uploading a trailer
 func (s *Server) handleUploadTrailer() gin.HandlerFunc {
     return func(c *gin.Context) {
-        // Parse multipart form data with a 50 MB limit
-        if err := c.Request.ParseMultipartForm(50 << 20); err != nil {
-            logErrorAndRespond(c, "Failed to parse form data", err, http.StatusBadRequest)
+        // Get the access token from the authorization header
+        accessToken := getTokenFromHeader(c)
+        if accessToken == "" {
+            logErrorAndRespond(c, "Unauthorized", errors.New("missing token", http.StatusUnauthorized), http.StatusUnauthorized)
             return
         }
 
-        // Get userID from context
-        userID, err := getUserIDFromContext(c)
+        // Validate and decode the access token
+        secret := s.Config.JWTSecret
+        accessClaims, err := jwtPackage.ValidateAndGetClaims(accessToken, secret)
         if err != nil {
             logErrorAndRespond(c, "Unauthorized", err, http.StatusUnauthorized)
             return
         }
 
-        // Create S3 client once
+        // Extract userID from accessClaims
+        userIDValue, ok := accessClaims["id"]
+        if !ok {
+            logErrorAndRespond(c, "UserID not found in claims", errors.New("userID missing", http.StatusFailedDependency), http.StatusBadRequest)
+            return
+        }
+
+        // Convert userIDValue to uint
+        var userID uint
+        switch v := userIDValue.(type) {
+        case float64:
+            userID = uint(v)
+        default:
+            logErrorAndRespond(c, "Invalid userID format", errors.New("invalid userID format", http.StatusUnauthorized), http.StatusBadRequest)
+            return
+        }
+
+        // Parse multipart form data
+        if err := c.Request.ParseMultipartForm(50 << 20); err != nil {
+            logErrorAndRespond(c, "Failed to parse form data", err, http.StatusBadRequest)
+            return
+        }
+
+        // Proceed with S3 upload logic (as you already have)
         s3Client, err := createS3Client()
         if err != nil {
             logErrorAndRespond(c, "Failed to create S3 client", err, http.StatusInternalServerError)
@@ -71,7 +97,6 @@ func (s *Server) handleUploadTrailer() gin.HandlerFunc {
             return
         }
 
-        // Convert file paths to comma-separated strings
         videoURLsStr := strings.Join(videoURLs, ",")
         pictureURLsStr := strings.Join(pictureURLs, ",")
 
