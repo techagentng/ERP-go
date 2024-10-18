@@ -48,24 +48,34 @@ func (s *Server) handleUploadTrailer() gin.HandlerFunc {
         // Get the access token from the authorization header
         accessToken := getTokenFromHeader(c)
         if accessToken == "" {
-            logErrorAndRespond(c, "Unauthorized", errors.New("missing token", http.StatusUnauthorized), http.StatusUnauthorized)
+            logErrorAndRespond(c, "Unauthorized - Missing Token", errors.New("missing token", http.StatusBadGateway), http.StatusUnauthorized)
             return
         }
+
+        // Log the access token retrieved from the header
+        log.Println("Authorization Header:", c.Request.Header.Get("Authorization"))
 
         // Validate and decode the access token
         secret := s.Config.JWTSecret
         accessClaims, err := jwtPackage.ValidateAndGetClaims(accessToken, secret)
         if err != nil {
-            logErrorAndRespond(c, "Unauthorized", err, http.StatusUnauthorized)
+            log.Println("Token Validation Error:", err)
+            logErrorAndRespond(c, "Unauthorized - Token Validation Failed", err, http.StatusUnauthorized)
             return
         }
+
+        // Log claims to verify successful decoding
+        log.Println("Access Claims:", accessClaims)
 
         // Extract userID from accessClaims
         userIDValue, ok := accessClaims["id"]
         if !ok {
-            logErrorAndRespond(c, "UserID not found in claims", errors.New("userID missing", http.StatusFailedDependency), http.StatusBadRequest)
+            logErrorAndRespond(c, "UserID not found in claims", errors.New("userID missing", http.StatusBadGateway), http.StatusBadRequest)
             return
         }
+
+        // Log user ID value before conversion
+        log.Println("UserID Value from Claims:", userIDValue)
 
         // Convert userIDValue to uint
         var userID uint
@@ -73,29 +83,42 @@ func (s *Server) handleUploadTrailer() gin.HandlerFunc {
         case float64:
             userID = uint(v)
         default:
-            logErrorAndRespond(c, "Invalid userID format", errors.New("invalid userID format", http.StatusUnauthorized), http.StatusBadRequest)
+            logErrorAndRespond(c, "Invalid userID format", errors.New("invalid userID format", http.StatusBadGateway), http.StatusBadRequest)
             return
         }
 
+        // Log the converted userID
+        log.Println("Converted UserID:", userID)
+
         // Parse multipart form data
         if err := c.Request.ParseMultipartForm(50 << 20); err != nil {
+            log.Println("Form Parsing Error:", err)
             logErrorAndRespond(c, "Failed to parse form data", err, http.StatusBadRequest)
             return
         }
 
-        // Proceed with S3 upload logic (as you already have)
+        // Proceed with S3 upload logic
         s3Client, err := createS3Client()
         if err != nil {
+            log.Println("S3 Client Creation Error:", err)
             logErrorAndRespond(c, "Failed to create S3 client", err, http.StatusInternalServerError)
             return
         }
 
+        // Log S3 client creation success
+        log.Println("S3 Client Created Successfully")
+        sessionID := uuid.New().String()
         // Upload files and get URLs
         videoURLs, pictureURLs, err := uploadTrailerFiles(c, s3Client, "videos")
         if err != nil {
+            log.Println("File Upload Error:", err)
             logErrorAndRespond(c, "Failed to upload files", err, http.StatusInternalServerError)
             return
         }
+
+        // Log the uploaded URLs
+        log.Println("Video URLs:", videoURLs)
+        log.Println("Picture URLs:", pictureURLs)
 
         videoURLsStr := strings.Join(videoURLs, ",")
         pictureURLsStr := strings.Join(pictureURLs, ",")
@@ -103,17 +126,28 @@ func (s *Server) handleUploadTrailer() gin.HandlerFunc {
         // Process form fields
         trailer, err := createTrailerFromForm(c, userID, videoURLsStr, pictureURLsStr)
         if err != nil {
+            log.Println("Trailer Processing Error:", err)
             logErrorAndRespond(c, "Failed to process trailer data", err, http.StatusBadRequest)
             return
         }
 
+        // Log the created trailer
+        log.Println("Trailer Created:", trailer)
+
         // Save trailer to the database
         if err := s.MovieRepository.CreateTrailer(&trailer); err != nil {
+            log.Println("Database Insertion Error:", err)
             logErrorAndRespond(c, "Failed to create trailer", err, http.StatusInternalServerError)
             return
         }
 
-        response.JSON(c, "Trailer uploaded successfully", http.StatusCreated, trailer, nil)
+        // Log the successful trailer creation
+        log.Println("Trailer Uploaded Successfully")
+
+        response.JSON(c, "Trailer uploaded successfully", http.StatusCreated, gin.H{
+            "trailer": trailer,
+            "sessionID": sessionID,  
+        }, nil)
     }
 }
 
@@ -150,20 +184,6 @@ func uploadTrailerFiles(c *gin.Context, s3Client *s3.Client, folder string) (vid
     pictureURLs = pictureFilePaths
 
     return videoURLs, pictureURLs, nil
-}
-
-// Helper function to extract userID from context
-func getUserIDFromContext(c *gin.Context) (uint, error) {
-    userIDCtx, exists := c.Get("userID")
-    if !exists {
-        return 0, errors.New("userID not found in context", errors.ErrBadRequest.Status)
-    }
-
-    userID, ok := userIDCtx.(uint)
-    if !ok {
-        return 0, errors.New("invalid userID format", errors.ErrBadRequest.Status)
-    }
-    return userID, nil
 }
 
 // Function to upload files concurrently
@@ -217,7 +237,6 @@ func uploadFilesConcurrently(files []*multipart.FileHeader, folder string, s3Cli
     return filePaths, uploadErr
 }
 
-
 // Helper function to create trailer from form data
 func createTrailerFromForm(c *gin.Context, userID uint, videoURLs, pictureURLs string) (models.Trailer, error) {
     durationStr := c.PostForm("duration")
@@ -258,26 +277,22 @@ var (
 	mu          sync.Mutex
 )
 
-func (s *Server) checkUploadProgress() gin.HandlerFunc {
-    return func(c *gin.Context) {
-        // Get the sessionID from the URL parameters
-        sessionID := c.Param("sessionID")
+func (s *Server) getUploadProgress() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sessionID := c.Query("sessionID")
+		if sessionID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing sessionID"})
+			return
+		}
 
-        // Lock the mutex to safely access the progress map
-        mu.Lock()
-        defer mu.Unlock()
+		progress, exists := uploadProgressStore[sessionID]
+		if !exists {
+			c.JSON(http.StatusNotFound, gin.H{"error": "No progress found for sessionID"})
+			return
+		}
 
-        // Get the progress value from the map
-        progress, exists := progressMap[sessionID]
-        if !exists {
-            // If the sessionID does not exist, return a 404 status
-            c.JSON(http.StatusNotFound, gin.H{"error": "Session ID not found"})
-            return
-        }
-
-        // Return the progress value as a JSON response
-        c.JSON(http.StatusOK, gin.H{"sessionID": sessionID, "progress": progress})
-    }
+		c.JSON(http.StatusOK, progress)
+	}
 }
 
 
