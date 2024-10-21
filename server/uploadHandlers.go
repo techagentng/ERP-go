@@ -151,20 +151,22 @@ func (s *Server) handleUploadTrailer() gin.HandlerFunc {
     }
 }
 
-// Mock in-memory store for upload progress tracking (replace with a persistent store in production)
-var uploadProgressStore = make(map[string]*models.UploadProgress)
+var (
+	// To store progress of uploads, map sessionID to progress
+	uploadProgressStore = make(map[string]int)
+	mu                  sync.Mutex // Mutex to ensure thread-safe access to the map
+)
 
-// Function to track progress for a specific user upload session
-func trackProgress(sessionID string, uploadedFiles int, totalFiles int) {
-	progress := uploadProgressStore[sessionID]
-	if progress == nil {
-		progress = &models.UploadProgress{TotalFiles: totalFiles}
-		uploadProgressStore[sessionID] = progress
-	}
-	progress.UploadedFiles = uploadedFiles
-	progress.Percentage = float64(uploadedFiles) / float64(totalFiles) * 100
+// Function to track upload progress
+func trackProgress(sessionID string, completed, total int) {
+	mu.Lock()
+	defer mu.Unlock()
 
-	// You could broadcast this progress to the client using WebSockets or a similar mechanism
+	// Calculate the progress percentage
+	progress := (completed * 100) / total
+
+	// Update the progress map
+	uploadProgressStore[sessionID] = progress
 }
 
 func uploadTrailerFiles(c *gin.Context, s3Client *s3.Client, folder string) (videoURLs []string, pictureURLs []string, err error) {
@@ -271,27 +273,27 @@ func logErrorAndRespond(c *gin.Context, message string, err error, statusCode in
     response.JSON(c, "", statusCode, nil, fmt.Errorf("%s: %w", message, err))
 }
 
-var (
-	// To store progress of uploads
-	progressMap = make(map[string]int)
-	mu          sync.Mutex
-)
-
 func (s *Server) getUploadProgress() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		sessionID := c.Query("sessionID")
+		// Get session ID from URL parameters instead of query
+		sessionID := c.Param("sessionID")
 		if sessionID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing sessionID"})
 			return
 		}
 
+		// Lock the mutex before accessing the map
+		mu.Lock()
 		progress, exists := uploadProgressStore[sessionID]
+		mu.Unlock() // Unlock after access
+
 		if !exists {
 			c.JSON(http.StatusNotFound, gin.H{"error": "No progress found for sessionID"})
 			return
 		}
 
-		c.JSON(http.StatusOK, progress)
+		// Return progress as a JSON object with progress key
+		c.JSON(http.StatusOK, gin.H{"progress": progress})
 	}
 }
 
